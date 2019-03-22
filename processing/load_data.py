@@ -33,11 +33,12 @@ def load_rain_data(dataset_path, table_index):
     :param int table_index: Index of the table to read from
     :return: Pandas DataFrame containing rainfall data
     """
+    import datetime
     assert os.path.exists(dataset_path), 'Dataset file doesn\'t exist!'
     translate_dict = {'区站号(字符)': 'station', '年(年)': 'year', '月(月)': 'month', '日(日)': 'day',
                       '时(时)': 'hour', '过去1小时降水量(毫米)': 'rain'}
     df = pd.read_excel(pd.ExcelFile(dataset_path), table_index)
     df = df.rename(translate_dict, axis=1).drop('station', axis=1)
-    df.index = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
+    df.index = pd.to_datetime(df[['year', 'month', 'day', 'hour']]) + datetime.timedelta(hours=8)
     df = df[df.rain != 999999.0]  # Drop invalid data
     return df

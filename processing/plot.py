@@ -209,6 +209,9 @@ def cong_diff_scatter_plot(cong_diff_data, ax, title):
     :param plt.axis ax: Matplotlib axis to plot on
     :param str title: Title for the plot
     """
-    sns.scatterplot(x="rain", y="cong_diff", data=cong_diff_data, ax=ax)
+    from scipy.stats import linregress
+    sns.regplot(x="rain", y="cong_diff", data=cong_diff_data, ax=ax)
+    slope, intercept, r_value, p_value, std_err = linregress(cong_diff_data["rain"],cong_diff_data["cong_diff"])
+    print(f'{title}: Slope={slope}\tIntercept={intercept}\tR_Value={r_value}\tP_Value={p_value}\tStd_Err={std_err}')
     ax.axhline(y=0, color='black')
     ax.set_title(title)
