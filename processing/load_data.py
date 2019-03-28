@@ -22,7 +22,9 @@ def load_dataset(dataset_path):
         df[col] = df[col].str.rstrip('%').astype('float') / 100.0  # Convert percentage into 0.xx
 
     df = df.resample('10Min').mean().dropna()
-    df['congestion'] = 1 - df['exp']  # Calculate congestion ratio
+    df['congestion'] = (df['cong'] + df['block']) / (1 - df['unknown'])  # Calculate congestion ratio
+    df['congestion2'] = (df['cong'] + 2*df['block']) / (1 - df['unknown'])  # Calculate congestion ratio
+    df['dusi'] = (df['block']) / (1 - df['unknown'])  # Calculate congestion ratio
     return df
 
 
