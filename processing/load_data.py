@@ -24,7 +24,7 @@ def load_dataset(dataset_path):
     df = df.resample('10Min').mean().dropna()
     df['congestion'] = (df['cong'] + df['block']) / (1 - df['unknown'])  # Calculate congestion ratio
     df['congestion2'] = (df['cong'] + 2*df['block']) / (1 - df['unknown'])  # Calculate congestion ratio
-    df['dusi'] = (df['block']) / (1 - df['unknown'])  # Calculate congestion ratio
+    df['heavy_congestion'] = (df['block']) / (1 - df['unknown'])  # Calculate congestion ratio
     return df
 
 

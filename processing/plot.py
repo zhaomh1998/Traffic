@@ -27,10 +27,10 @@ def weekday_weekend_ten_min_plot(df, ax, title):
 
     weekday = df[df.index.dayofweek < 5]
     weekend = df[df.index.dayofweek >= 5]
-    avg_weekday = process_average(weekday)[['congestion', 'block']].rename({'congestion': 'weekday congestion',
-                                                                            'block': 'weekday block'}, axis=1)
-    avg_weekend = process_average(weekend)[['congestion', 'block']].rename({'congestion': 'weekend congestion',
-                                                                            'block': 'weekend block'}, axis=1)
+    avg_weekday = process_average(weekday)[['congestion', 'heavy_congestion']].rename({'congestion': 'weekday congestion',
+                                                                            'heavy_congestion': 'weekday block'}, axis=1)
+    avg_weekend = process_average(weekend)[['congestion', 'heavy_congestion']].rename({'congestion': 'weekend congestion',
+                                                                            'heavy_congestion': 'weekend block'}, axis=1)
     plot_df = pd.concat([avg_weekday, avg_weekend], axis=1)
     sns.lineplot(data=plot_df, ax=ax)
     ax.set_xlim('00:00', '23:50')
