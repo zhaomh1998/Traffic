@@ -1,5 +1,6 @@
 from datetime import datetime
 import time, sys, pytz, traceback, requests, os, logging, schedule
+from func_timeout import func_set_timeout
 from urllib.request import urlopen
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -15,18 +16,18 @@ ts_buffer = {'data': ['', '', '', ''], 'new': [False, False, False, False]}
 # create logger
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
-# create file handler which logs even debug messages
-fh = logging.FileHandler('traffic.log')
-fh.setLevel(logging.DEBUG)
+# create file handler which logs only error
+fh = logging.FileHandler('traffic_error.log')
+fh.setLevel(logging.ERROR)
 # create console handler with a higher log level
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 # create formatter and add it to the handlers
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-fh.setFormatter(formatter)
+# fh.setFormatter(formatter)
 ch.setFormatter(formatter)
 # add the handlers to the logger
-logger.addHandler(fh)
+# logger.addHandler(fh)
 logger.addHandler(ch)
 # Setup requests
 request_session = requests.Session()
@@ -45,7 +46,7 @@ def get_amap_api():
 
 amap_key = get_amap_api()
 
-
+@func_set_timeout(10)
 def process_traffic_radius(region, ts_field_id, api_key):
     try:
         req = 'http://restapi.amap.com/v3/traffic/status/circle?location=' + region['x'] + ',' + region['y']\
@@ -69,7 +70,7 @@ def process_traffic_radius(region, ts_field_id, api_key):
     except:
         logger.error(traceback.format_exc())
 
-
+@func_set_timeout(10)
 def process_traffic_rectangle(region, ts_field_id, api_key):
     try:
         req = 'http://restapi.amap.com/v3/traffic/status/rectangle?rectangle=' + region['x1'] + ','\
@@ -93,28 +94,7 @@ def process_traffic_rectangle(region, ts_field_id, api_key):
     except:
         logger.error(traceback.format_exc())
 
-def http_request(link, response=request_session):
-    try:
-        return response.get(link, timeout=5)
-    except:
-        logger.error(traceback.format_exc())
-
-def csv_time():
-    return datetime.now(cst).strftime(csvFormat)
-
-
-def process_zhonglou(): process_traffic_radius(zhonglou, 1, next(amap_key))
-
-
-def process_xiyou(): process_traffic_radius(xiyou, 2, next(amap_key))
-
-
-def process_zhanqian(): process_traffic_rectangle(zhanqian, 3, next(amap_key))
-
-
-def process_ningguo(): process_traffic_radius(ningguo, 4, next(amap_key))
-
-
+@func_set_timeout(10)
 def post_thingspeak():
     try:
         if all(ts_buffer['new']):
@@ -128,19 +108,67 @@ def post_thingspeak():
     except:
         logger.error(traceback.format_exc())
 
+def http_request(link, response=request_session):
+    try:
+        return response.get(link, timeout=5)
+    except:
+        logger.error(traceback.format_exc())
+
+def csv_time():
+    return datetime.now(cst).strftime(csvFormat)
+
+def process_zhonglou(): 
+    try:
+        process_traffic_radius(zhonglou, 1, next(amap_key))
+    except:
+        # NOTE: Must end this process gracefully so last_run on schedule could be properly updated
+        logger.error(traceback.format_exc())  # This should only happen for func_timeout for above function
+
+def process_xiyou():
+    try:
+        process_traffic_radius(xiyou, 2, next(amap_key))
+    except:
+        # NOTE: Must end this process gracefully so last_run on schedule could be properly updated
+        logger.error(traceback.format_exc())  # This should only happen for func_timeout for above function
+
+def process_zhanqian():
+    try:
+        process_traffic_rectangle(zhanqian, 3, next(amap_key))
+    except:
+        # NOTE: Must end this process gracefully so last_run on schedule could be properly updated
+        logger.error(traceback.format_exc())  # This should only happen for func_timeout for above function
+
+def process_ningguo():
+    try:
+        process_traffic_radius(ningguo, 4, next(amap_key))
+    except:
+        # NOTE: Must end this process gracefully so last_run on schedule could be properly updated
+        logger.error(traceback.format_exc())  # This should only happen for func_timeout for above function
+
+def process_thingspeak():
+    try:
+        post_thingspeak()
+    except:
+        # NOTE: Must end this process gracefully so last_run on schedule could be properly updated
+        logger.error(traceback.format_exc())  # This should only happen for func_timeout for above function
+
 
 if __name__ == '__main__':
     logger.info('Program initializing')
-    try:
-        schedule.every().minute.do(process_zhonglou)
-        schedule.every().minute.do(process_xiyou)
-        schedule.every().minute.do(process_zhanqian)
-        schedule.every().minute.do(process_ningguo)
-        schedule.every(30).seconds.do(post_thingspeak)
-        logger.info('Program started')
-        while True:
+    schedule.every().minute.do(process_zhonglou)
+    schedule.every().minute.do(process_xiyou)
+    schedule.every().minute.do(process_zhanqian)
+    schedule.every().minute.do(process_ningguo)
+    schedule.every(30).seconds.do(process_thingspeak)
+    logger.info('Program started')
+    while True:
+        try:
             schedule.run_pending()
             time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info('Server manually closed by KeyboardInterrupt')
-        sys.exit()
+        except KeyboardInterrupt:
+            logger.info('Server manually closed by KeyboardInterrupt')
+            sys.exit()
+        except:
+            # Should never reach here because all tasks are try-catched
+            logger.error("THIS SHOULD NOT PRINT")
+            logger.error(traceback.format_exc())
