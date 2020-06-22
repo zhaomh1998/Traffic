@@ -3,6 +3,7 @@ Functions to load datasets for the traffic project
 """
 import os
 import pandas as pd
+import re
 
 
 def load_dataset(dataset_path):
@@ -13,9 +14,22 @@ def load_dataset(dataset_path):
     """
     assert os.path.exists(dataset_path), 'Dataset file doesn\'t exist!'
 
-    df = pd.read_csv(dataset_path,
+    df = pd.read_csv(dataset_path, error_bad_lines=False,
                      names=['year', 'month', 'day', 'hour', 'minute', 'exp', 'cong', 'block', 'unknown'])
     date_cols = ['year', 'month', 'day', 'hour', 'minute']
+    
+    # Data validation
+    def invalid_data(df):
+        return ((df['year'] < 2000) | (df['year'] > 2100) |
+                (df['month'] < 0) | (df['month'] > 12) |
+                (df['day'] < 0) | (df['day'] > 31) |
+                (df['exp'].apply(lambda x: not re.search(r'^(?:[0-9]|^[1-9][0-9]|^100).[0-9][0-9]%$', x))) |
+                (df['cong'].apply(lambda x: not re.search(r'^(?:[0-9]|^[1-9][0-9]|^100).[0-9][0-9]%$', x))) |
+                (df['block'].apply(lambda x: not re.search(r'^(?:[0-9]|^[1-9][0-9]|^100).[0-9][0-9]%$', x))) |
+                (df['unknown'].apply(lambda x: not re.search(r'^(?:[0-9]|^[1-9][0-9]|^100).[0-9][0-9]%$', x)))
+               )
+    df.drop(index=df[invalid_data(df)].index, inplace=True)
+    
     df['date'] = pd.to_datetime(df[date_cols])
     df = df.set_index('date').drop(date_cols, axis=1)
     for col in df.columns:
@@ -42,5 +56,5 @@ def load_rain_data(dataset_path, table_index):
     df = pd.read_excel(pd.ExcelFile(dataset_path), table_index)
     df = df.rename(translate_dict, axis=1).drop('station', axis=1)
     df.index = pd.to_datetime(df[['year', 'month', 'day', 'hour']]) + datetime.timedelta(hours=8)
-    df = df[df.rain != 999999.0]  # Drop invalid data
+    df.drop(['year', 'month', 'day', 'hour'], axis=1, inplace=True)
     return df

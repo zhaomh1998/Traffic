@@ -65,18 +65,6 @@ def process_hour_avg(df):
     return df.groupby([df.index.hour]).mean()
 
 
-def process_hour_group(df):
-    """
-    Prepare data to make hourly plots
-    :param DataFrame df: Pandas DataFrame for the data to process
-    :return: Processed Pandas DataFrame
-    """
-    df_hour = df.copy()
-    df_hour['hour'] = df.index.hour
-    df_hour['isweekday'] = df.index.dayofweek < 5
-    return df_hour
-
-
 def hourly_boxplot(df, ax, title):
     """
     Produce hourly boxplot, separating weekdays and weekends
