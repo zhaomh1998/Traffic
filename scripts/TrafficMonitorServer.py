@@ -1,5 +1,5 @@
-from datetime import datetime
-import time, sys, pytz, traceback, requests, os, logging, schedule
+from datetime import datetime, timedelta
+import time, sys, pytz, traceback, requests, os, logging, croniter
 from func_timeout import func_set_timeout
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -39,7 +39,7 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 # Setup requests
 request_session = requests.Session()
-retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+retries = Retry(total=5, backoff_factor=5, status_forcelist=[500, 502, 503, 504])
 request_session.mount('http://', HTTPAdapter(max_retries=retries))
 
 # Set up data directory
@@ -92,7 +92,7 @@ def process_traffic_radius(region, ts_field_id, api_key):
             with open(log_path, 'a') as data_file:
                 time_str = csv_time()
                 data_file.write(time_str + ',' + '区域,' + str(resp_parsed['evaluation']['status']) + ','
-                                + str(resp_parsed['description']) + ',-1,-1,NA\n')
+                                + str(resp_parsed['description'].replace(',', '，')) + ',-1,-1,NA\n')
                 for k, v in road_traffic_need.items():
                     if v is not None:
                         assert isinstance(v, list)
@@ -101,14 +101,15 @@ def process_traffic_radius(region, ts_field_id, api_key):
                             data_file.write(
                                 f'{time_str},{k}'
                                 + ',' + str(section['status'])
-                                + ',' + str(section['section_desc'])
+                                # To avoid confusion with csv delimiter, we replace the comma in description
+                                + ',' + str(section['section_desc'].replace(',', '，'))
                                 + ',' + str(section['congestion_distance'])
                                 + ',' + str(section['speed'])
                                 + ',' + str(section['congestion_trend']) + '\n'
                             )
                             total_cong_distance += section['congestion_distance']
 
-            ts_buffer['data'][ts_field_id-1] = total_cong_distance
+            ts_buffer['data'][ts_field_id-1] = str(total_cong_distance)
             ts_buffer['new'][ts_field_id-1] = True
         else:
             logger.error('API Call Error for ' + region['file'] + ': ' + resp.json()['message'])
@@ -175,22 +176,60 @@ def process_thingspeak():
         logger.error(traceback.format_exc())  # This should only happen for func_timeout for above function
 
 
+# Scheduler
+# https://stackoverflow.com/a/35833199
+# Round time down to the top of the previous minute
+def round_down_time(dt=None, dateDelta=timedelta(minutes=1)):
+    roundTo = dateDelta.total_seconds()
+    if dt is None:
+        dt = datetime.now()
+    seconds = (dt - dt.min).seconds
+    rounding = (seconds + roundTo / 2) // roundTo * roundTo
+    return dt + timedelta(0, rounding - seconds, -dt.microsecond)
+
+
+# Get next run time from now, based on schedule specified by cron string
+def get_next_cron_runtime(schedule):
+    return croniter.croniter(schedule, datetime.now()).get_next(datetime)
+
+
+# Sleep till the top of the next minute
+def sleep_until_next_minute():
+    t = datetime.utcnow()
+    time.sleep(60 - (t.second + t.microsecond / 1000000.0))
+
+
 if __name__ == '__main__':
     logger.info('Program initializing')
     seconds_until_next_sample = (min_per_sample * 60) - time.time() % (min_per_sample * 60)
     logger.info('Will wait %.2f seconds before starting' % seconds_until_next_sample)
-    time.sleep(seconds_until_next_sample)
-
-    schedule.every(min_per_sample).minutes.do(process_zhonglou)
-    schedule.every(min_per_sample).minutes.do(process_xiyou)
-    schedule.every(min_per_sample).minutes.do(process_zhanqian)
-    schedule.every(min_per_sample).minutes.do(process_ningguo)
-    schedule.every(30).seconds.do(process_thingspeak)
+    time.sleep(seconds_until_next_sample - 1)
     logger.info('Program started')
+
+    sched_every_x_min = f'*/{min_per_sample} * * * *'  # Run every x minutes
+    t_next_sched = get_next_cron_runtime(sched_every_x_min)
+
     while True:
         try:
-            schedule.run_pending()
-            time.sleep(1)
+            t_rounded = round_down_time()
+            if t_rounded == t_next_sched:
+                process_zhonglou()
+                logger.info('[OK] Zhonglou')
+                process_xiyou()
+                logger.info('[OK] Xiyou')
+                process_zhanqian()
+                logger.info('[OK] Zhanqian')
+                process_ningguo()
+                logger.info('[OK] Ningguo')
+                process_thingspeak()
+                logger.info('[OK] ThingSpeak\n')
+                t_next_sched = get_next_cron_runtime(sched_every_x_min)
+            elif t_rounded > t_next_sched:
+                # We missed an execution
+                logger.error("Execution Missed!")
+                t_next_sched = get_next_cron_runtime(sched_every_x_min)
+            sleep_until_next_minute()
+            time.sleep(1)  # Delay 1 second to avoid edge issues
         except KeyboardInterrupt:
             logger.info('Server manually closed by KeyboardInterrupt')
             sys.exit()
